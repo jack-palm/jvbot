@@ -23,8 +23,6 @@ class Tray:
         self.gantry = gantry
         self._load_version(version, calibrate=calibrate)  # generates grid of sample slot coordinates
 
-        # coordinate system properties
-
     def _load_version(self, version, calibrate=False):
         if version not in AVAILABLE_VERSIONS:
             raise Exception(
@@ -46,7 +44,6 @@ class Tray:
             calibrate = True
         if calibrate:
             self.calibrate()
-
 
 
     def __generate_coordinates(self):
@@ -78,61 +75,13 @@ class Tray:
             if self.CALIBRATIONSLOT is None:
                 self.CALIBRATIONSLOT = name #last slot, should be the bottom right one
 
-    #             print(name)
-
-    #     print(self._coordinates)
-
-    # def __generate_coordinates(self):
-    #     def letter(num):
-    #         # converts number (0-25) to letter (A-Z)
-    #         return chr(ord("A") + num)
-
-    #     self._coordinates = {}
-    #     self._ycoords = [
-    #         letter(self.gridsize[1] - yidx - 1) for yidx in range(self.gridsize[1])
-    #     ]  # lettering +y -> -y = A -> Z
-    #     self._xcoords = [
-    #         xidx + 1 for xidx in range(self.gridsize[0])
-    #     ]  # numbering -x -> +x = 1 -> 100
-
-    #     self.CALIBRATIONSLOT = None
-    #     for yidx in range(self.gridsize[1]):  # y
-    #         for xidx in range(self.gridsize[0]):  # x
-    #             name = f"{self._ycoords[yidx]}{self._xcoords[xidx]}"
-    #             self._coordinates[name] = np.array(
-    #                 [
-    #                     xidx * self.pitch[0],
-    #                     yidx * self.pitch[1],
-    #                     0,
-    #                 ]
-    #             )
-
-             
-
-    #         if self.CALIBRATIONSLOT is None:
-    #             self.CALIBRATIONSLOT = name #last slot, should be the bottom right one
-
-    #             print(name)
-
-    #     print(self._coordinates)
 
     def get_slot_coordinates(self, name):
         if self.__calibrated == False:
             raise Exception(f"Need to calibrate tray position before use!")
 
-        inst_offset = {    'H1' : [0,0.2,0], 'H2' : [0,0.2,0], 'H3' : [0,0.2,0], 'H4' : [0,0.2,0], ##H1-4
-                           'G1' : [0,0.2,0], 'G2' : [0,0.2,0], 'G3' : [0,0.2,0], 'G4' : [0,0.2,0], ##G1-4
-                           'F1' :  [0,0,0],'F2' : [0,0,0], 'F3' : [0,0,0], 'F4' : [0,0,0], ##F1-4
-                           'E1' : [0,0,0], 'E2' : [0,0,0], 'E3' : [0,0,0], 'E4' :[0,0,0], ##E1-4
-                           'D1' : [0,0,0], 'D2' :[0,0,0],  'D3' : [0,0,0], 'D4' : [0,0,0], ##D1-4
-                           'C1' : [0,0,0], 'C2' : [0,0,0], 'C3' : [0,0,0], 'C4': [0,0,0], ##C1-4
-                           'B1' : [0,0,0], 'B2' : [0,0,0], 'B3' : [0,0,0], 'B4' : [0,0,0], ##B1-4
-                           'A1' : [0,-0.3,0], 'A2' : [0,-0.3,0], 'A3' : [0,-0.3,0], 'A4' : [0,-0.3,0] ##A1-4
-        }
-
-        coords = self._coordinates[name] + self.offset# - inst_offset[name]
+        coords = self._coordinates[name] + self.offset
         return coords
-
 
 
     def __call__(self, name):
@@ -144,7 +93,6 @@ class Tray:
         self.gantry.gui()
         self.offset = self.gantry.position - (self._coordinates[self.CALIBRATIONSLOT])
         self.gantry.moverel(z=self.gantry.ZHOP_HEIGHT)
-
 
         self.__calibrated = True
 

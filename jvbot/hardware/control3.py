@@ -11,17 +11,15 @@ import csv
 class Control_Keithley:
 
 
-	def __init__(self, area = 0.07, address='GPIB0::22::INSTR'): 
+	def __init__(self, area, address='GPIB0::22::INSTR'): 
 		"""
 			Initializes Keithley 2400 class SMUs
 		"""
 		self.area = area
-		self.pause = 0.001
 		self.wires = 4
 		self.compliance_current = 1.05 # A
 		self.compliance_voltage = 2 # V
 		self.buffer_points = 2
-		self.counts = 2
 		self.__previewFigure = None
 		self.__previewAxes = None
 		self.connect(keithley_address=address)
@@ -52,8 +50,7 @@ class Control_Keithley:
 		self.keithley.compliance_current = self.compliance_current
 		self.keithley.buffer_points = self.buffer_points
 		self.keithley.source_voltage = 0
-		# self.shutter = serial.Serial(shutter_port)
-		# self.close_shutter()
+
 
 
 	def disconnect(self):
@@ -61,25 +58,6 @@ class Control_Keithley:
 			Disconnects from the GPIB interface
 		"""
 		self.keithley.shutdown()
-
-
-	def open_shutter(self):
-		"""
-			Opens homebuilt shutter
-		"""
-		# self.shutter.write(b'1')
-		# self._shutteropen = True
-		return
-
-
-	def close_shutter(self):
-		"""
-			Closes homebuilt shutter
-		"""
-		# self.shutter.write(b'0')
-		# self._shutteropen = False
-		return
-
 
 	def _source_voltage_measure_current(self):
 		"""
@@ -108,7 +86,7 @@ class Control_Keithley:
 			Returns:
 				list(np.ndarray): voltage (V), current (A), resistance (Ohms)
 		"""
-		self.keithley.config_buffer(self.counts)
+		self.keithley.config_buffer(self.buffer_points)
 		self.keithley.start_buffer()
 		self.keithley.wait_for_buffer()
 		return self.keithley.means
@@ -175,13 +153,11 @@ class Control_Keithley:
 		self._source_voltage_measure_current()
 		self.keithley.source_voltage = vstart
 		self.keithley.enable_source()
-		if light:
-			self.open_shutter()
+
 		for m, v_ in enumerate(v):
 			self.keithley.source_voltage = v_
 			vmeas[m], i[m], _ = self._measure()
-		if light:
-			self.close_shutter()
+
 		self.keithley.disable_source()
 		
 		# build dataframe and return
@@ -254,7 +230,7 @@ class Control_Keithley:
 		# calc params
 		j = []
 		for value in i:
-			j.append(-value*1000/self.area) #amps to mA/cm2. sign flip for solar cell current convention)	
+			j.append(value*1000/self.area) #amps to mA/cm2. sign flip for solar cell current convention)	
 		p = [num1*num2 for num1, num2 in zip(j,vmeas)]
 
 		# build dataframe
@@ -290,10 +266,8 @@ class Control_Keithley:
 		self._source_voltage_measure_current()
 		self.keithley.source_voltage = 0
 		self.keithley.enable_source()
-		self.open_shutter()
 		isc = -self._measure()[1]
 		jsc_val = isc*1000/self.area
-		self.close_shutter()
 		self.keithley.disable_source()
 		if printed:
 			print(f'Isc: {isc:.3f} A, Jsc: {jsc_val:.2f} mA/cm2')
@@ -313,9 +287,7 @@ class Control_Keithley:
 		self._source_current_measure_voltage()
 		self.souce_current = 0
 		self.keithley.enable_source()
-		self.open_shutter()
 		voc_val = self._measure()[0]
-		self.close_shutter()
 		self.keithley.disable_source()
 		if printed:
 			print(f'Voc: {voc_val*1000:.2f} mV')
@@ -380,7 +352,6 @@ class Control_Keithley:
 				v, i, vmeas, light = self._jv_sweep(vstart = v0, vend = v1, vsteps = vsteps, light = False)
 				data = self._format_jv(v=v, i=i, vmeas=vmeas, light=light, name=name, dir='fwd', scan_number=None, preview = preview)
 
-
 	def spo(self, name, vstart, vstep, vdelay, interval, interval_count, preview = True):
 		""" 
 			Function to run a SPO test.
@@ -404,7 +375,6 @@ class Control_Keithley:
 		
 		# setup keithly config
 		self._source_voltage_measure_current()
-		self.open_shutter()
 		self.keithley.source_voltage = 0
 		self.keithley.enable_source()
 		vapplied = vstart
@@ -426,7 +396,7 @@ class Control_Keithley:
 				tempv, tempi, _ = self._measure()
 				vmeas.append(tempv)
 				v.append(vapplied)
-				i.append(tempi)
+				i.append(-1*tempi)
 				t.append(ctime)
 				print(vapplied,tempv,tempi,n)
 				n+=1 
@@ -440,11 +410,9 @@ class Control_Keithley:
 			if ctime < interval*n:
 				time.sleep(1e-3)
 			else:
-
 				# calculate last powers
 				p0 = vmeas[-2]*i[-2]
 				p1 = vmeas[-1]*i[-1]
-
 				# iterate in appropriate direction
 				if p1 <= p0: #p dec
 					if v[-1] < v[-2]: #v dec
@@ -453,27 +421,26 @@ class Control_Keithley:
 						vapplied -= vstep
 				else: # p inc
 					if v[-1] > v[-2]: #v dec
-						vapplied -= vstep 
+						vapplied += vstep 
 					else:
-						vapplied += vstep
+						vapplied -= vstep
 
-					# apply voltage, measure current and voltage
-					self.keithley.source_voltage = vapplied
-					time.sleep(vdelay)
-					tempv, tempi, _ = self._measure()
-					
-					# update dictionary & arrays
-					vmeas.append(tempv)
-					v.append(vapplied)
-					i.append(tempi)
-					t.append(ctime)
-					print(vapplied,tempv,tempi,n)
-					n+=1
+				# apply voltage, measure current and voltage
+				self.keithley.source_voltage = vapplied
+				time.sleep(vdelay)
+				tempv, tempi, _ = self._measure()
+				
+				# update dictionary & arrays
+				vmeas.append(tempv)
+				v.append(vapplied)
+				i.append(-1*tempi)
+				t.append(ctime)
+				print(f'Vapplied: {1000*vapplied:0.1f}mV, PCE: {-1000*vapplied*tempi/self.area:0.2f}%')
+				n+=1
 			ctime = time.time() - stime
 		
 		# shutoff keithley
 		self.keithley.disable_source()
-		self.close_shutter()
 
 		# save data
 		data = self._format_spo(v=v,i=i,t=t,vmeas=vmeas,name=name, preview = preview)

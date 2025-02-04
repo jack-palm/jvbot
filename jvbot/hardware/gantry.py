@@ -68,7 +68,6 @@ class Gantry:
                 None,
                 None,
             ]  # start at None's to indicate stage has not been homed.
-        # self.write('M92 X40.0 Y26.77 Z400.0')
         self.set_defaults()
         print("Connected to gantry")
 
@@ -103,10 +102,8 @@ class Gantry:
         while self._handle.in_waiting:
             line = self._handle.readline().decode("utf-8").strip()
             if line != "ok":
-                #print('this is the variable line in write function which is appended to output', line)
                 output.append(line)
             time.sleep(self.POLLINGDELAY)
-        #print('this is the value the variable "output" holds while it is in the write function:', output)
         return output
 
     def _enable_steppers(self):
@@ -119,7 +116,6 @@ class Gantry:
         found_coordinates = False
         while not found_coordinates:
             output = self.write("M114")  # get current position
-            #print('This is the value the variable "output" holds in the update function:',output)
             for line in output:
                 if line.startswith("X:"):
                     x = float(re.findall(r"X:(\S*)", line)[0])
@@ -129,11 +125,8 @@ class Gantry:
                     break
         self.position = [x, y, z]
 
-        #print('This is the value x,y,z have in the update function which is then passed on to position:',x,y,z)
-
     # gantry methods
     def gohome(self):
-        #print("Go home is sent")
         self.write("G28 Z")
         self.update()
         self.write("G28 X Y")
@@ -154,65 +147,6 @@ class Gantry:
             y = self.position[1]
         if z is None:
             y = self.position[2]
-
-        # if (
-        #     (x > self.__LIMITS["x_max"])
-        #     # or (x < self.__LIMITS["x_min"])
-        #     # or (y > self.__LIMITS["y_max"])
-        #     # or (y < self.__LIMITS["y_min"])
-        #     # or (z > self.__LIMITS["z_max"])
-        #     # or (z < self.__LIMITS["z_min"])
-        # ):
-        #     raise Exception("Target position x_max is out of bounds!")
-
-
-        # if (
-        #     # (x > self.__LIMITS["x_max"])
-        #     (x < self.__LIMITS["x_min"])
-        #     # or (y > self.__LIMITS["y_max"])
-        #     # or (y < self.__LIMITS["y_min"])
-        #     # or (z > self.__LIMITS["z_max"])
-        #     # or (z < self.__LIMITS["z_min"])
-        # ):
-        #     raise Exception("Target position x_min is out of bounds!")
-
-        # if (
-        #     # (x > self.__LIMITS["x_max"])
-        #     # or (x < self.__LIMITS["x_min"])
-        #     (y > self.__LIMITS["y_max"])
-        #     # or (y < self.__LIMITS["y_min"])
-        #     # or (z > self.__LIMITS["z_max"])
-        #     # or (z < self.__LIMITS["z_min"])
-        # ):
-        #     raise Exception("Target position y_max is out of bounds!")
-        # if (
-        #     # (x > self.__LIMITS["x_max"])
-        #     # or (x < self.__LIMITS["x_min"])
-        #     # or (y > self.__LIMITS["y_max"])
-        #     (y < self.__LIMITS["y_min"])
-        #     # or (z > self.__LIMITS["z_max"])
-        #     # or (z < self.__LIMITS["z_min"])
-        # ):
-        #     raise Exception("Target position y_min is out of bounds!")
-        # if (
-        #     # (x > self.__LIMITS["x_max"])
-        #     # or (x < self.__LIMITS["x_min"])
-        #     # or (y > self.__LIMITS["y_max"])
-        #     # or (y < self.__LIMITS["y_min"])
-        #     (z > self.__LIMITS["z_max"])
-        #     # or (z < self.__LIMITS["z_min"])
-        # ):
-        #     raise Exception("Target position z_max is out of bounds!")
-
-        # if (
-        #     # (x > self.__LIMITS["x_max"])
-        #     # or (x < self.__LIMITS["x_min"])
-        #     # or (y > self.__LIMITS["y_max"])
-        #     # or (y < self.__LIMITS["y_min"])
-        #     # or (z > self.__LIMITS["z_max"])
-        #     (z < self.__LIMITS["z_min"])
-        # ):
-        #     raise Exception("Target position z_min is out of bounds!")
 
         return x, y, z
 
@@ -317,7 +251,6 @@ class GantryGUI:
         self.app = PyQt5.QtCore.QCoreApplication.instance()
         if self.app is None:
             self.app = QApplication([])
-        # self.app = QApplication(sys.argv)
         self.app.aboutToQuit.connect(self.app.deleteLater)
         self.win = QWidget()
         self.grid = QGridLayout()
@@ -375,8 +308,8 @@ class GantryGUI:
         self.grid.addWidget(self.jogdown, 3, 3)
 
         ### step size selector buttons
-        self.steppt1 = QPushButton("0.5 mm")
-        self.steppt1.clicked.connect(partial(self.set_stepsize, stepsize=0.5))
+        self.steppt1 = QPushButton("0.1 mm")
+        self.steppt1.clicked.connect(partial(self.set_stepsize, stepsize=0.1))
         self.grid.addWidget(self.steppt1, 5, 0)
         self.step1 = QPushButton("1 mm")
         self.step1.clicked.connect(partial(self.set_stepsize, stepsize=1))
@@ -384,19 +317,11 @@ class GantryGUI:
         self.step10 = QPushButton("10 mm")
         self.step10.clicked.connect(partial(self.set_stepsize, stepsize=10))
         self.grid.addWidget(self.step10, 5, 2)
-        self.step50 = QPushButton("50 mm")
-        self.step50.clicked.connect(partial(self.set_stepsize, stepsize=50))
-        self.grid.addWidget(self.step50, 6, 0)
-        self.step100 = QPushButton("100 mm")
-        self.step100.clicked.connect(partial(self.set_stepsize, stepsize=100))
-        self.grid.addWidget(self.step100, 6, 1)
 
         self.stepsize_options = {
-            0.5: self.steppt1,
+            0.1: self.steppt1,
             1: self.step1,
             10: self.step10,
-            50: self.step50,
-            100: self.step100,
         }
 
         self.set_stepsize(self.stepsize)
@@ -427,13 +352,9 @@ class GantryGUI:
 
     def run(self):
         self.win.setLayout(self.grid)
-        self.win.setWindowTitle("PASCAL Gantry GUI")
+        self.win.setWindowTitle("JVBot Gantry GUI")
         self.win.setGeometry(300, 300, 500, 150)
         self.win.show()
         self.app.setQuitOnLastWindowClosed(True)
         self.app.exec_()
-        # self.app.quit()
-        # sys.exit(self.app.exec_())
-        # self.app.exit()
-        # sys.exit(self.app.quit())
         return
