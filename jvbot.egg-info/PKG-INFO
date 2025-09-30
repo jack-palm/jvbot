@@ -2,16 +2,11 @@ Metadata-Version: 2.1
 Name: jvbot
 Version: 0.1
 Summary: Control of Fenning Research Group automated current-voltage tester
-Home-page: UNKNOWN
+Download-URL: https://github.com/rekumar/jvbot
 Author: Rishi Kumar
 Author-email: rek010@eng.ucsd.edu
 License: MIT
-Download-URL: https://github.com/rekumar/jvbot
-Description: # JVBot
-        
-        documentation will eventually live here :p
 Keywords: materials,science,machine,automation
-Platform: UNKNOWN
 Classifier: Programming Language :: Python :: 3.8
 Classifier: Development Status :: 4 - Beta
 Classifier: Intended Audience :: Science/Research
@@ -22,3 +17,11 @@ Classifier: Topic :: Scientific/Engineering :: Physics
 Classifier: Topic :: Scientific/Engineering :: Chemistry
 Classifier: Topic :: Software Development :: Libraries :: Python Modules
 Description-Content-Type: text/markdown
+Requires-Dist: numpy
+Requires-Dist: natsort
+Requires-Dist: tqdm
+Requires-Dist: pymeasure
+
+# JVBot
+
+documentation will eventually live here :p

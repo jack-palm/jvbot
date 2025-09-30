@@ -24,6 +24,8 @@ class Gantry:
             self.port = get_port(constants["gantry"]["device_identifiers"])
         else:
             self.port = port
+
+        print(self.port)
         self.POLLINGDELAY = constants["gantry"][
             "pollingrate"
         ]  # delay between sending a command and reading a response, in seconds
