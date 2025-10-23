@@ -11,7 +11,7 @@ import csv
 class Control_Keithley:
 
 
-	def __init__(self, area, address='GPIB0::22::INSTR'): 
+	def __init__(self, area = 0.048, address='GPIB0::22::INSTR'): 
 		"""
 			Initializes Keithley 2400 class SMUs
 		"""
@@ -20,6 +20,15 @@ class Control_Keithley:
 		self.compliance_current = 1.05 # A
 		self.compliance_voltage = 2 # V
 		self.buffer_points = 2
+		self._scan_speeds = {
+			"H": [0.1, 0.1, 0.1], # [I, V, R]
+			"M": [1, 1, 1], # [I, V, R]
+			"L": [10, 10, 10], # [I, V, R]
+		}
+		self._current_nplc = 1
+		self._voltage_nplc = 1
+		self._resistance_nplc = 1
+		self._source_delay = 0.001
 		self.__previewFigure = None
 		self.__previewAxes = None
 		self.connect(keithley_address=address)
@@ -91,6 +100,131 @@ class Control_Keithley:
 		self.keithley.wait_for_buffer()
 		return self.keithley.means
 
+	def _measure_2(self, **kwargs):
+		counts = kwargs.get('buffer_counts', self.buffer_points)
+		trigger_delay = kwargs.get('trigger_delay', 0) # auto-set to 0 in keithley
+		timeout = kwargs.get('buffer_timeout', 60) # stop the buffer after this many seconds
+		interval = kwargs.get('buffer_interval', 0.1) # how many seconds between pings to check if buffer is full
+		self.keithley.config_buffer(points = counts, delay = trigger_delay)
+		t0_ = time.time()
+		self.keithley.start_buffer()
+		self.keithley.wait_for_buffer(timeout = timeout, interval = interval)
+		b_t = time.time() - t0_
+		return self.keithley.means, self.keithley.standard_devs, b_t
+
+	def _jv_sweep_2(self, vstart, vend, vsteps, source_delay, buffer_counts, NPLC = [1, 1, 1], delay_time = 0.001, trigger_time = 0, light = True):
+
+		# initialize arrays:
+		v = np.linspace(vstart, vend, vsteps)
+		vmeas = np.zeros((vsteps,))
+		i = np.zeros((vsteps,))
+		v_duration = np.zeros((vsteps,))
+		vmeas_std = np.zeros((vsteps,))
+		i_std = np.zeros((vsteps,))
+		buffer_times = np.zeros((vsteps,))
+
+		# set scan settings:
+		i_n, v_n, r_n = NPLC
+		self.keithley.current_nplc = i_n
+		self.keithley.voltage_nplc = v_n
+		self.keithley.resistance_nplc = r_n
+		self.keithley.source_delay = source_delay # seconds
+
+		# set scan:
+		self._source_voltage_measure_current()
+		t0 = time.time()
+		self.keithley.source_voltage = vstart
+		self.keithley.enable_source()
+
+		# if light:
+			# self.open_shutter()
+		for m, v_ in enumerate(v):
+			if m > 0:
+				t0 = time.time()
+			self.keithley.source_voltage = v_
+			means, std, b_t = self._measure_2(buffer_counts = buffer_counts, trigger_time = trigger_time)
+			vmeas[m], i[m], _ = means
+			vmeas_std[m], i_std[m], _ = std
+			v_duration[m] = time.time() - t0
+			buffer_times[m] = b_t
+		# if light:
+			# self.close_shutter()
+		self.keithley.disable_source()
+
+		# re-set to defaults:
+		self.keithley.current_nplc = self._current_nplc
+		self.keithley.voltage_nplc = self._voltage_nplc
+		self.keithley.resistance_nplc = self._resistance_nplc
+		self.keithley.source_delay = self._source_delay
+
+		return v, i, vmeas, vmeas_std, i_std, v_duration, buffer_times, light
+	
+	def _format_jv_2(self, v, i, vmeas, vmeas_std, i_std, v_duration, source_delay, buffer_times, light, name, dir, scan_number, scan_speed, preview = True):
+		"""
+			Uses output of _jv_sweep along with crucial info to preview and save JV data
+			
+			Args:
+				v (np.ndarray(float)): voltage array (output from _sweep_jv_2)
+				i (np.ndarray(float)): current array (output from _sweep_jv_2)
+				vmeas (np.ndarray(float)): measured voltage array (output from _sweep_jv_2)
+				vmeas_std (np.ndarray(float)): measured voltage standard deviation array (output from _sweep_jv_2)
+				i_std (np.ndarray(float)): measured current standard deviation array (output from _sweep_jv_2)
+				v_duration (np.ndarray(float)): Duration of each voltage step (output from _sweep_jv_2)
+				source_delay (float): Duration of source delay step of SMU cycle (seconds)
+				buffer_times (np.ndarray(float)): How long the buffer was open for each voltage step (output from _sweep_jv_2)
+				light (boolean = True): boolean to describe status of light
+				name (string): name of device
+				dir (string): direction -- fwd or rev
+				scan_number (int): suffix for multiple scans in a row
+				scan_speed (string): Scan Rate is Low (L), Medium (M), or High (H)
+				preview (boolean = True): option to preview in graph
+		"""
+		j = []
+		j_std = []
+		for i_, i_std_ in zip(i, i_std):
+			j.append(-i_*1000/self.area) # amps to mA/cm2, sign flip for solar cell current convention
+			j_std.append(i_std_*1000/self.area)
+		p = [j_*v_ for j_, v_ in zip(j, vmeas)]
+		p_std = [(j_*v_)*np.sqrt(((v_std**2)/v_) + ((j_std**2)/j_)) for j_, j_std, v_, v_std in zip(j, j_std, vmeas, vmeas_std)]
+		
+		data = pd.DataFrame({
+			"Voltage (V)": v,
+			"Current Density (mA/cm2)": j,
+			"Measured Voltage (V)": vmeas,
+			"Current (A)": i,
+			"Power Density (mW/cm2)": p,
+			"Voltage Step Duration (s)": v_duration,
+			"Voltage Step Measurement Buffer Duration (s)": buffer_times,
+			"Measured Voltage Standard Deviation (V)": vmeas_std,
+			"Measured Current Density Standard Deviation (mA/cm2)": j_std,
+			"Measured Current Standard Deviation (A)": i_std,
+			"Power Density Standard Deviation (mW/cm2)": p_std,
+		})
+		# save csv
+		if light:
+			light_on_off = "light"
+		else:
+			light_on_off = "dark"
+		if scan_number is None:
+			scan_n = ""
+		else:
+			scan_n = f"_{scan_number}"
+		if scan_speed is None:
+			scan_s = ""
+		else:
+			scan_s = f"_{scan_speed}"
+		if source_delay is None:
+			scan_d = ""
+		else:
+			scan_d_ = f"_{source_delay}"
+			first, second = scan_d_.split('.')
+			scan_d = "{}-{}".format(first, second)
+		data.to_csv(f"{name}{scan_n}_{dir}_{light_on_off}{scan_s}{scan_d}.csv")
+
+		# preview
+		if preview:
+			self._preview(v, j,'Voltage (V)','Current Density (mA/cm2)', f'{name}{scan_n}_{dir}_{light_on_off}{scan_s}')
+		
 
 	def _preview(self,xd,yd,xl,yl,label):
 		"""
@@ -596,3 +730,59 @@ class Control_Keithley:
 				n+=1
 			ctime = time.time()-stime
 
+	def jv_rate(self, name, direction, vmin, vmax, vsteps, source_delay = None, speed = "M", buffer_counts = 2, light = True, preview = True):
+		if len(direction) == 3:
+			dir_0 = direction
+			skip_dir_1 = True
+		else:
+			dir_0 = direction[:3]
+			skip_dir_1 = False
+			dir_1 = direction[3:]
+		
+		if abs(vmin) < abs(vmax):
+			v0 = vmin
+			v1 = vmax
+		elif abs(vmin) > abs(vmax):
+			v0 = vmax
+			v1 = vmin
+		# fwd is going from lower to higher V, reverse is opposite
+		if 'f' in dir_0:
+			vstart_0 = v0
+			vend_0 = v1
+			vstart_1 = v1
+			vend_1 = v0
+		else:
+			vstart_0 = v1
+			vend_0 = v0
+			vstart_1 = v0
+			vend_1 = v1
+		if speed not in ["M", "L", "H"]:
+			raise Exception("The `speed` input must be one of ['L', 'M', 'H'], corresponding to low, medium, and high scan rates.")
+		NPLC = self._scan_speeds[speed]
+		if source_delay is None:
+			source_delay = self._source_delay
+
+		v, i, vmeas, vmeas_std, i_std, v_duration, buffer_times, light = self._jv_sweep_2(vstart = vstart_0, vend = vend_0, vsteps = vsteps, source_delay = source_delay, buffer_counts = buffer_counts, NPLC = NPLC, light = light)
+		data = self._format_jv_2(v = v, i = i, vmeas = vmeas, vmeas_std = vmeas_std, i_std = i_std, v_duration = v_duration, source_delay = source_delay, buffer_times = buffer_times, light = light, name = name, dir = dir_0, scan_number = None, scan_speed = speed, preview = preview)
+		if not skip_dir_1:
+			v, i, vmeas, vmeas_std, i_std, v_duration, buffer_times, light = self._jv_sweep_2(vstart = vstart_1, vend = vend_1, vsteps = vsteps, source_delay = source_delay, buffer_counts = buffer_counts, NPLC = NPLC, light = light)
+			data = self._format_jv_2(v = v , i = i, vmeas = vmeas, vmeas_std = vmeas_std, i_std = i_std, v_duration = v_duration, source_delay = source_delay, buffer_times = buffer_times, light = light, name = name, dir = dir_1, scan_number = None, scan_speed = speed, preview = preview)
+
+
+
+	def jv_spo(self, name, direction, vmin, vmax, vsteps, sweep_speed, sweep_buffer_counts, light = True, preview = True):
+
+		# format jv sweep
+
+		# take jv sweep
+
+		# dump jv sweep data
+
+		# calculate MPP
+
+		# format SPO
+
+		# take SPO
+
+		# dump SPO data
+		raise Exception('Eric has not finished this yet.')

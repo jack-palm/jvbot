@@ -18,16 +18,25 @@ AVAILABLE_VERSIONS = {
 }
 
 from jvbot.hardware.gantry import Gantry
-from jvbot.hardware.control3 import Control_Keithley 
+from jvbot.hardware.control3 import Control_Keithley
+from jvbot.hardware.control5 import Control_Keithley_Eric 
 from jvbot.hardware.tray import Tray
 
 
 class Control:
-    def __init__(self, area=0.048):
+    def __init__(self, area=0.048, Eric_Opt = None):
         self.area = area  # cm2
-        self.control_keithley = Control_Keithley(area=self.area)
+        if Eric_Opt is None:
+            response = self._prompt_for_input("Do you want to use Eric's Scan-Rate Sweeps or Dark JV's? (y/n)")
+            if response in ['y', 'Y']:
+                self.control_keithley = Control_Keithley_Eric(area=self.area)
+            else:        
+                self.control_keithley = Control_Keithley(area=self.area)
         self.gantry = Gantry()
 
+    def _prompt_for_input(s):
+        response = input(s)
+        return response
     def set_tray(self, version:str, calibrate:bool = False):
         self.gantry.moveto([55,24,30])
         self.tray = Tray(version=version, gantry=self.gantry, calibrate=calibrate)
