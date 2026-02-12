@@ -34,7 +34,7 @@ class Control:
                 self.control_keithley = Control_Keithley(area=self.area)
         self.gantry = Gantry()
 
-    def _prompt_for_input(s):
+    def _prompt_for_input(self, s):
         response = input(s)
         return response
     def set_tray(self, version:str, calibrate:bool = False):
@@ -49,7 +49,8 @@ class Control:
             direction = 'fwdrev',
             vsteps = 50,
             light = True,
-            preview = True
+            preview = True,
+            **kwargs
         ): 
         
         """
@@ -66,6 +67,29 @@ class Control:
         """
 
         self.control_keithley.jv(name=name, direction=direction, vmin=vmin, vmax=vmax, vsteps=vsteps, light=light, preview=preview)
+        if light == False:
+            n_measurements = kwargs.get('n_measurements', 15)
+            NPLC = kwargs.get('NPLC', 1)
+            crash_time = kwargs.get('crash_time', int(15*60))
+            current_stability_threshold = kwargs.get('current_stability_threshold', 0.2)
+            directions = [direction]
+            repeat_scans = kwargs.get('repeat_scans', ['S1'])
+            self.control_keithley.dark_jv_v2(
+                slot = slot,
+                current_stability_threshold = current_stability_threshold,
+                repeat_scans = repeats,
+                vstart = vstart,
+                vend = vend,
+                vsteps = vsteps,
+                fit_bins = fit_windows,
+                stable_method = stable_method,
+                NPLC = NPLC,
+                n_measurements = n_measurements,
+                crash_time = crash_time,
+                dark = True,
+                preview = True,
+                verbose = False,
+            )
 
     def scan_tray(
             self,
@@ -78,7 +102,8 @@ class Control:
             final_slot=None,
             slots=None,
             light=True,
-            preview=True
+            preview=True,
+            **kwargs
         ):
 
         allslots = natsorted(list(self.tray._coordinates.keys()))
@@ -94,11 +119,66 @@ class Control:
 
         if slots is None:
             raise ValueError("Either final_slot or slots must be specified!")
-
-        for slot in tqdm(slots, desc="Scanning Tray"):
-            self.gantry.moveto(self.tray(slot))
+        if light:
+            for slot in tqdm(slots, desc="Scanning Tray"):
+                self.gantry.moveto(self.tray(slot))
+                for i in range(repeat_scans):
+                    name = f"{slot}_S{i+1}"
+                    self.control_keithley.jv(name=name, direction=direction, vmin=vmin, vmax=vmax, vsteps=vsteps, light=light, preview=preview)
+        if not light: # take Dark JVs
+            repeats = []
             for i in range(repeat_scans):
-                name = f"{slot}_S{i+1}"
-                self.control_keithley.jv(name=name, direction=direction, vmin=vmin, vmax=vmax, vsteps=vsteps, light=light, preview=preview)
-
+                repeats.append(f"S{i+1}")
+            fit_windows = kwargs.get('fit_window', [50])
+            n_measurements = kwargs.get('n_measurements', 15)
+            NPLC = kwargs.get('NPLC', 1)
+            crash_time = kwargs.get('crash_time', int(15*60))
+            current_stability_threshold = kwargs.get('current_stability_threshold', 0.2)
+            directions = [direction]
+            stable_method = kwargs.get('stable_method', 'bin')
+            if stable_method == 'bin':
+                for slot in tqdm(slots, desc="Scanning Tray"):
+                    self.gantry.moveto(self.tray(slot))
+                    self.control_keithley.dark_jv_v2(
+                        slot = slot,
+                        current_stability_threshold = current_stability_threshold,
+                        # repeat_scans = repeats,
+                        repeat_scans = repeat_scans,
+                        vstart = vmin,
+                        vend = vmax,
+                        vsteps = vsteps,
+                        directions = directions,
+                        fit_bins = fit_windows,
+                        stable_method = stable_method,
+                        NPLC = NPLC,
+                        n_measurements = n_measurements,
+                        crash_time = crash_time,
+                        measure_delay = kwargs.get('measure_delay', 0),
+                        dark = True,
+                        preview = True,
+                        verbose = False,
+                    )
+            elif stable_method == 'slope':
+                for slot in tqdm(slots, desc="Scanning Tray"):
+                    self.gantry.moveto(self.tray(slot))
+                    self.control_keithley.dark_jv_v2(
+                        slot = slot,
+                        current_stability_threshold = current_stability_threshold,
+                        # repeat_scans = repeats,
+                        repeat_scans = repeat_scans,
+                        vstart = vmin,
+                        vend = vmax,
+                        vsteps = vsteps,
+                        directions = directions,
+                        fit_windows = fit_windows,
+                        stable_method = stable_method,
+                        NPLC = NPLC,
+                        n_measurements = n_measurements,
+                        crash_time = crash_time,
+                        measure_delay = kwargs.get('measure_delay', 0),
+                        dark = True,
+                        preview = True,
+                        verbose = False,
+                    )
+        self.control_keithley._reset_keithley()
         self.gantry.movetoload()
